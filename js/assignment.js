@@ -1,3 +1,9 @@
+var Constants = {
+  NUM_BOIDS: 50,
+  NUM_LEAD_BOIDS: 3,
+  G: 0.2
+};
+
 var Simulation = function() {
   this.scene = new THREE.Scene();
   this.renderer = new THREE.WebGLRenderer();
@@ -14,10 +20,6 @@ Simulation.prototype.render = function() {
 
 Simulation.prototype.start = function() {
   requestAnimationFrame(this.render.bind(this));
-
-  this.simFrameCount = 0;
-  this.lastSimFrameTime = performance.now();
-  this.oldTime = performance.now();
   this.simulatorInterval = setInterval(this.simulate.bind(this), 10);
 };
 
@@ -26,69 +28,143 @@ Simulation.prototype.stop = function() {
 };
 
 Simulation.prototype.simulate = function() {
-  this.simFrameCount++;
-  var newTime = performance.now();
-  var elapsedMs = newTime - this.oldTime;
-  if (h < 10) {
-    return;
-  }
 
-  if (newTime - this.lastSimFrameTime > 1000) {
-    console.log("sim frames: " + this.simFrameCount);
-    this.simFrameCount = 0;
-    this.lastSimFrameTime = performance.now();
-  }
-
-  var h = elapsedMs / 1000;
+  var accelerations = [];
 
   for (var i = 0; i < this.boids.length; i++) {
-    var sphere = this.boids[i];
-    sphere.integrate(this.vertices, this.faces, this.a, h);
- }
+    accelerations.push(new THREE.Vector3());
+    var a = accelerations[i];
+    var boid = this.boids[i];
 
-  this.oldTime = newTime;
+    for (var j = 0; j < this.boids.length; j++) {
+      if (j == i) continue;
+
+      var otherBoid = this.boids[j];
+
+      var u = otherBoid.p.clone().sub(boid.p);
+      var distance = u.length();
+      var uHat = u.clone().normalize();
+
+      if (boid.isLeadBoid) {
+        if (boid.isChasing == j) {
+          boid.v.copy(u.clone().multiplyScalar(2));
+        }
+        // if (boid.lastUpdatedChaseBoid > this.clock.getElapsedTime() + 2) {
+        //   boid.chaseNewBoid(this.clock);
+        // }
+        continue;
+      }
+      if (otherBoid.isLeadBoid && u.length() < 1) {
+        a.add(u.negate().multiplyScalar(2));
+      }
+
+      var weight = 1;
+      if (otherBoid.isLeadBoid) {
+        weight = 5 * Math.pow(Math.E, -distance);
+      } else {
+        weight = Math.pow(Math.E, -distance / 2);
+      }
+      weight *= Math.max(boid.v.dot(uHat) / boid.v.length(), 0);
+
+      if (weight <= 0) { continue; }
+
+      // Collision avoidance
+      var collisionAvoidanceAcceleration = uHat.clone()
+          .multiplyScalar(1 / ((otherBoid.isLeadBoid ? 0.10 : 1) * distance))
+          .multiplyScalar(-Coefficients.COLLISION_AVOIDANCE)
+          .multiplyScalar(weight);
+      a.add(collisionAvoidanceAcceleration);
+
+      // Flock centering
+      var flockCenteringAcceleration = uHat.clone()
+          .multiplyScalar(distance)
+          .multiplyScalar(Coefficients.FLOCK_CENTERING)
+          .multiplyScalar(weight);
+      if (otherBoid.isLeadBoid) {
+        a.sub(flockCenteringAcceleration);
+      } else if (boid.particleClass == otherBoid.particleClass) {
+        a.add(flockCenteringAcceleration);
+      }
+
+      // Velocity matching
+      var velocityMatchingAcceleration = otherBoid.v.clone().sub(boid.v)
+          .multiplyScalar(Coefficients.VELOCITY_MATCHING)
+          .multiplyScalar(weight);
+      if (boid.particleClass == otherBoid.particleClass) {
+        a.add(velocityMatchingAcceleration);
+      }
+    }
+  }
+
+  for (var j = 0; j < this.attractors.length; j++) {
+    var attractor = this.attractors[j];
+    for (var i = 0; i < this.boids.length; i++) {
+      var boid = this.boids[i];
+      var a = accelerations[i];
+      var d = boid.p.clone().sub(attractor.position);
+      var r = Math.max(d.length(), 1);
+      if (r > 5) {
+        a.add(d.normalize().multiplyScalar(-Constants.G * boid.mass * attractor.mass / (r / 2)));
+      }
+    }
+  }
+
+  var h = this.clock.getDelta();
+  this.updateCamera(h);
+
+  for (var i = 0; i < this.boids.length; i++) {
+    var boid = this.boids[i];
+    boid.integrate(this.vertices, this.faces, accelerations[i], h);
+  }
+
+  this.cube.rotateX(h * Math.random());
+  this.cube.rotateY(h * Math.random());
+  this.cube.rotateZ(h * Math.random());
 };
 
 Simulation.prototype.reset = function() {
+  this.clock = new THREE.Clock();
   this.scene = new THREE.Scene();
+  this.keyboard = new THREEx.KeyboardState();
   this.vertices = [];
   this.faces = [];
 
-  var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(5, 10, 10);
-  camera.up = new THREE.Vector3(0,0,1);
-  camera.lookAt(new THREE.Vector3(0,0,0));
-  this.camera = camera;
+  this.resetCamera(this.scene);
 
   // Add the outer cube
   var cubeGeometry = new THREE.BoxGeometry( 10, 10, 10 );
-  var cubeMaterial = new THREE.MeshLambertMaterial(
-      {
-        color: 0xdddddd,
-        specular: 0x009900,
-        shininess: 30,
-        shading: THREE.SmoothShading,
-        side: THREE.DoubleSide,
-        opacity: 0.3,
-        transparent: true
-      });
+  var cubeMaterial = new THREE.MeshBasicMaterial({ wireframe: true });
+  var wireCube = new THREE.Mesh(cubeGeometry, cubeMaterial)
+  this.scene.add(wireCube);
+
+  cubeGeometry = new THREE.BoxGeometry( 2, 2, 2 );
+  cubeGeometry.computeBoundingSphere();
+  cubeMaterial = new THREE.MeshPhongMaterial({ color: 0xdddddd, specular: 0xffffff, shininess: 30, shading: THREE.SmoothShading });
   this.cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-  this.addCollidableMesh(this.cube);
+  this.scene.add(this.cube);
+
+  var attractorGeo = new THREE.OctahedronGeometry(0.2, 1);
+  var attractorMat = new THREE.MeshBasicMaterial({ wireframe: true, color: 0x0000ff });
+  this.scene.add(new THREE.Mesh(attractorGeo, attractorMat));
+
+  this.attractors = [];
+  this.attractors.push({ mass: 10, position: new THREE.Vector3() });
 
   // Add the boids to the simulation
   this.boids = [];
-  for (var i = 0; i < 1; i++) {
-    var sphere = new Particle(this.scene);
+  for (var i = 0; i < Constants.NUM_BOIDS; i++) {
+    var particleClass = (i < Constants.NUM_LEAD_BOIDS ? 0 : Math.floor(Math.random() * 3 + 1));
+    var sphere = new Particle(this.scene, particleClass);
     this.boids.push(sphere);
   }
 
-  // Add a light
+  // Add lights
   var light = new THREE.PointLight(0xffffff, 1, 40);
   light.position.set(8, 10, 10);
   this.scene.add(light);
 
-  this.a = new THREE.Vector3(0, 0, 0);
-  //this.a = new THREE.Vector3(0, 0, -9.8);
+  light = new THREE.AmbientLight( 0x404040 ); // soft white light
+  this.scene.add( light );
 };
 
 Simulation.prototype.addCollidableMesh = function(mesh) {
@@ -110,3 +186,61 @@ Simulation.prototype.addCollidableMesh = function(mesh) {
   }
   Array.prototype.push.apply(this.vertices, mesh.geometry.vertices);
 };
+
+Simulation.prototype.resetCamera = function(scene) {
+  var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(7, 9, 10);
+  camera.up = new THREE.Vector3(0,0,1);
+  camera.lookAt(new THREE.Vector3(0,0,0));
+  this.camera = camera;
+
+  var cameraPosGeom = new THREE.BoxGeometry(.1, .1, .1);
+  var cameraPosMat = new THREE.MeshBasicMaterial();
+  this.cameraPos = new THREE.Mesh(cameraPosGeom, cameraPosMat);
+  this.cameraPos.position.set(0, 0, 0);
+  scene.add(this.cameraPos);
+}
+
+Simulation.prototype.updateCamera = function(h) {
+  var moveDistance = 10 * h; // 200 pixels per second
+  var rotateAngle = Math.PI / 2 * h;   // pi/2 radians (90 degrees) per second
+  var keyboard = this.keyboard;
+
+  // local transformations
+
+  // move forwards/backwards/left/rightwwa
+  if (keyboard.pressed("W"))
+    this.cameraPos.translateY(-moveDistance);
+  if (keyboard.pressed("S"))
+    this.cameraPos.translateY(moveDistance);
+  if (keyboard.pressed("Q"))
+    this.cameraPos.translateX(moveDistance);
+  if (keyboard.pressed("E"))
+    this.cameraPos.translateX(-moveDistance);
+
+  // rotate left/right/up/down
+  var rotation_matrix = new THREE.Matrix4().identity();
+  if (keyboard.pressed("A"))
+    this.cameraPos.rotateOnAxis(new THREE.Vector3(0,0,1), rotateAngle);
+  if (keyboard.pressed("D"))
+    this.cameraPos.rotateOnAxis(new THREE.Vector3(0,0,1), -rotateAngle);
+  if (keyboard.pressed("R"))
+    this.cameraPos.rotateOnAxis(new THREE.Vector3(1,0,0), rotateAngle);
+  if (keyboard.pressed("F"))
+    this.cameraPos.rotateOnAxis(new THREE.Vector3(1,0,0), -rotateAngle);
+
+  if (keyboard.pressed("Z"))
+  {
+    this.cameraPos.position.set(0,0,0);
+    this.cameraPos.rotation.set(0,0,0);
+  }
+
+  var relativeCameraOffset = new THREE.Vector3(0,5,0);
+
+  var cameraOffset = relativeCameraOffset.applyMatrix4(this.cameraPos.matrixWorld);
+
+  this.camera.position.x = cameraOffset.x;
+  this.camera.position.y = cameraOffset.y;
+  this.camera.position.z = cameraOffset.z;
+  this.camera.lookAt(this.cameraPos.position);
+}

@@ -1,14 +1,26 @@
 var Coefficients = {
-  FRICTION: 0.01,
-  RESTITUTION: 0.95
+  FRICTION: 0,
+  RESTITUTION: 1,
+  COLLISION_AVOIDANCE: 0.5,
+  FLOCK_CENTERING: 0.5,
+  VELOCITY_MATCHING: 1
 };
 
-var Particle = function(scene) {
+var Particle = function(scene, particleClass) {
   this.identifer = Math.random().toString(36).substring(7);
-  this.geometry = new THREE.OctahedronGeometry(0.1, 1);
+
+  this.radius = 0.1;
+  this.isLeadBoid = (particleClass == 0);
+  this.particleClass = particleClass;
+  if (this.isLeadBoid) {
+    this.timeLeftToUpdateChaser = -1;
+    this.maybeChaseNewBoid(0);
+  }
+  this.mass = Math.random() * 5;
+  this.geometry = new THREE.OctahedronGeometry(this.radius, 1);
   this.material = new THREE.MeshPhongMaterial(
       {
-        color: 0xffffff,
+        color: this.getColor(particleClass),
         specular: 0xffffff,
         shininess: 30,
         shading: THREE.SmoothShading,
@@ -16,11 +28,21 @@ var Particle = function(scene) {
       });
   this.mesh = new THREE.Mesh(this.geometry, this.material);
 
-  this.v = new THREE.Vector3(Math.random() * 9, Math.random() * 9, Math.random() * 9);
+  this.v = new THREE.Vector3(2 - Math.random() * 4, 2 - Math.random() * 4, 2 - Math.random() * 4);
+  // this.v = new THREE.Vector3();
   this.p = new THREE.Vector3(4 - Math.random() * 8, 4 - Math.random() * 8, 0);
 
   scene.add(this.mesh);
 };
+
+Particle.prototype.getColor = function(particleClass) {
+  switch (particleClass) {
+    case 0: return 0xffffff;
+    case 1: return 0xff0000;
+    case 2: return 0x00ff00;
+    case 3: return 0x0000ff;
+  }
+}
 
 Particle.prototype.integrate = function(vertices, faces, acceleration, h) {
   var vn = acceleration.clone().multiplyScalar(h).add(this.v);
@@ -81,6 +103,14 @@ Particle.prototype.integrate = function(vertices, faces, acceleration, h) {
     this.p = pn;
     timeRemaining -= timestep;
   }
+
+  this.maybeChaseNewBoid(h);
 };
 
-
+Particle.prototype.maybeChaseNewBoid = function(h) {
+  this.timeLeftToUpdateChaser -= h;
+  if (this.timeLeftToUpdateChaser < 0) {
+    this.isChasing = Math.floor(Math.random() * (Constants.NUM_BOIDS - Constants.NUM_LEAD_BOIDS) + Constants.NUM_LEAD_BOIDS)
+    this.timeLeftToUpdateChaser = 5;
+  }
+};
