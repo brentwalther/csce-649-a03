@@ -1,6 +1,7 @@
 var Constants = {
   NUM_BOIDS: 50,
   NUM_LEAD_BOIDS: 3,
+  NUM_CUBES: 4,
   G: 0.2
 };
 
@@ -8,7 +9,7 @@ var Simulation = function() {
   this.scene = new THREE.Scene();
   this.renderer = new THREE.WebGLRenderer();
   this.renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(this.renderer.domElement);
+  document.body.querySelector('#canvasSpot').appendChild(this.renderer.domElement);
 
   this.reset();
 };
@@ -35,6 +36,26 @@ Simulation.prototype.simulate = function() {
     accelerations.push(new THREE.Vector3());
     var a = accelerations[i];
     var boid = this.boids[i];
+
+    for (var zz = 0; zz < this.cubes.length; zz++) {
+      var cube = this.cubes[zz];
+      var c = cube.position.clone();
+      var e = cube.geometry.boundingSphere.radius;
+
+      var distanceToCenter = c.sub(boid.p);
+      var distanceToPlane = distanceToCenter.length() - e;
+      var uHat = distanceToCenter.clone().normalize();
+      var vu = boid.v.dot(uHat);
+      var t = distanceToPlane / vu;
+
+      var avoidVector = boid.v.clone().sub(uHat.clone().multiplyScalar(vu));
+      var m = avoidVector.length() * t;
+      if (m <= e && t > 0) {
+        avoidVector.normalize();
+        var am = 2 * (e - m) / (t * t);
+        a.add(avoidVector.multiplyScalar(am));
+      }
+    }
 
     for (var j = 0; j < this.boids.length; j++) {
       if (j == i) continue;
@@ -117,9 +138,13 @@ Simulation.prototype.simulate = function() {
     boid.integrate(this.vertices, this.faces, accelerations[i], h);
   }
 
-  this.cube.rotateX(h * Math.random());
-  this.cube.rotateY(h * Math.random());
-  this.cube.rotateZ(h * Math.random());
+  // Spin the cubes
+  for (var zz = 0; zz < this.cubes.length; zz++) {
+    var cube = this.cubes[zz];
+    cube.rotateX(h * Math.random());
+    cube.rotateY(h * Math.random());
+    cube.rotateZ(h * Math.random());
+  }
 };
 
 Simulation.prototype.reset = function() {
@@ -137,11 +162,17 @@ Simulation.prototype.reset = function() {
   var wireCube = new THREE.Mesh(cubeGeometry, cubeMaterial)
   this.scene.add(wireCube);
 
-  cubeGeometry = new THREE.BoxGeometry( 2, 2, 2 );
-  cubeGeometry.computeBoundingSphere();
-  cubeMaterial = new THREE.MeshPhongMaterial({ color: 0xdddddd, specular: 0xffffff, shininess: 30, shading: THREE.SmoothShading });
-  this.cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-  this.scene.add(this.cube);
+  this.cubes = [];
+  var cbs = 0;
+  while (cbs < Constants.NUM_CUBES) {
+    cubeGeometry = new THREE.BoxGeometry( 2, 2, 2 );
+    cubeGeometry.computeBoundingSphere();
+    cubeMaterial = new THREE.MeshPhongMaterial({ color: 0xdddddd, specular: 0xffffff, shininess: 30, shading: THREE.SmoothShading });
+    this.cubes[cbs] = new THREE.Mesh(cubeGeometry, cubeMaterial);
+    this.cubes[cbs].position.set(5 - Math.random() * 10, 5 - Math.random() * 10, 5 - Math.random() * 10);
+    this.scene.add(this.cubes[cbs]);
+    cbs++;
+  }
 
   var attractorGeo = new THREE.OctahedronGeometry(0.2, 1);
   var attractorMat = new THREE.MeshBasicMaterial({ wireframe: true, color: 0x0000ff });

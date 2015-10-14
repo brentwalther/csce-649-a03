@@ -9,7 +9,16 @@
     </style>
   </head>
   <body>
-    <button onclick="simulation.reset()">Reset</button>
+    <table width="100%">
+      <tr>
+        <td>
+          <button onclick="simulation.reset()">Reset</button>
+        </td>
+        <td id="canvasSpot">
+        </td>
+      </tr>
+    </table>
+  </body>
 
     <script src="js/three.min.js"></script>
     <script src="js/THREEx.KeyboardState.js"></script>
