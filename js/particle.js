@@ -29,11 +29,15 @@ var Particle = function(scene, particleClass) {
   this.mesh = new THREE.Mesh(this.geometry, this.material);
 
   this.v = new THREE.Vector3(2 - Math.random() * 4, 2 - Math.random() * 4, 2 - Math.random() * 4);
-  // this.v = new THREE.Vector3();
-  this.p = new THREE.Vector3(4 - Math.random() * 8, 4 - Math.random() * 8, 0);
+
+  this.resetPosition();
 
   scene.add(this.mesh);
 };
+
+Particle.prototype.resetPosition = function() {
+  this.p = new THREE.Vector3(4 - Math.random() * 8, 4 - Math.random() * 8, 0);
+}
 
 Particle.prototype.getColor = function(particleClass) {
   switch (particleClass) {

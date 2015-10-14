@@ -185,8 +185,24 @@ Simulation.prototype.reset = function() {
   this.boids = [];
   for (var i = 0; i < Constants.NUM_BOIDS; i++) {
     var particleClass = (i < Constants.NUM_LEAD_BOIDS ? 0 : Math.floor(Math.random() * 3 + 1));
-    var sphere = new Particle(this.scene, particleClass);
-    this.boids.push(sphere);
+    var boid = new Particle(this.scene, particleClass);
+    var positionNotOkay;
+    do {
+      boid.resetPosition();
+      positionNotOkay = false;
+      // Spin the cubes
+      for (var zz = 0; zz < this.cubes.length; zz++) {
+        var cube = this.cubes[zz];
+        var c = cube.position.clone();
+        var e = cube.geometry.boundingSphere.radius;
+
+        var distanceOutside = c.sub(boid.p).length() - e;
+        if (distanceOutside < 0) {
+          positionNotOkay = true;
+        }
+      }
+    } while (positionNotOkay);
+    this.boids.push(boid);
   }
 
   // Add lights
