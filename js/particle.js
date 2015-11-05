@@ -1,6 +1,6 @@
 var Coefficients = {
-  FRICTION: 0,
-  RESTITUTION: 1,
+  FRICTION: 0.01,
+  RESTITUTION: 0.75,
   COLLISION_AVOIDANCE: 0.5,
   FLOCK_CENTERING: 0.5,
   VELOCITY_MATCHING: 1
@@ -14,7 +14,6 @@ var Particle = function(scene, particleClass) {
   this.particleClass = particleClass;
   if (this.isLeadBoid) {
     this.timeLeftToUpdateChaser = -1;
-    this.maybeChaseNewBoid(0);
   }
   this.mass = Math.random() * 5;
   this.geometry = new THREE.OctahedronGeometry(this.radius, 1);
@@ -48,9 +47,9 @@ Particle.prototype.getColor = function(particleClass) {
   }
 }
 
-Particle.prototype.integrate = function(vertices, faces, acceleration, h) {
+Particle.prototype.integrate = function(vertices, faces, state, h) {
   var vn = acceleration.clone().multiplyScalar(h).add(this.v);
-  var pn = vn.clone().add(this.v).multiplyScalar(h/2).add(this.p);
+  var pn = vn.clone().multiplyScalar(h).add(this.p);
 
   var timeRemaining = h;
   var count = 0;
@@ -59,7 +58,7 @@ Particle.prototype.integrate = function(vertices, faces, acceleration, h) {
     var timestep = timeRemaining;
 
     vn = acceleration.clone().multiplyScalar(timestep).add(this.v);
-    pn = vn.clone().add(this.v).multiplyScalar(timestep / 2).add(this.p);
+    pn = vn.clone().multiplyScalar(timestep).add(this.p);
 
     for (var i = 0; i < faces.length; i++) {
       var face = faces[i];
@@ -72,9 +71,9 @@ Particle.prototype.integrate = function(vertices, faces, acceleration, h) {
       if ((dn < 0) != (dn1 < 0)) {
         var f = (dn / (dn - dn1)) - 0.001;
 
-        timestep *= f;
-        var collisionVelocity = acceleration.clone().multiplyScalar(timestep).add(this.v);
-        var collisionPosition = collisionVelocity.clone().add(this.v).multiplyScalar(timestep / 2).add(this.p);
+        timestepPortion = timestep * f;
+        var collisionVelocity = acceleration.clone().multiplyScalar(timestepPortion).add(this.v);
+        var collisionPosition = collisionVelocity.clone().multiplyScalar(timestepPortion).add(this.p);
 
         var v1 = vertices[face.a];
         var v2 = vertices[face.b];
@@ -100,6 +99,8 @@ Particle.prototype.integrate = function(vertices, faces, acceleration, h) {
       vt.sub(vt.clone().normalize().multiplyScalar(Math.min(Coefficients.FRICTION * vn.length(), vt.length())));
 
       vn.multiplyScalar(-Coefficients.RESTITUTION).add(vt);
+
+      timestep *= f;
     }
 
     this.mesh.position.copy(pn);
@@ -107,14 +108,24 @@ Particle.prototype.integrate = function(vertices, faces, acceleration, h) {
     this.p = pn;
     timeRemaining -= timestep;
   }
-
-  this.maybeChaseNewBoid(h);
 };
 
-Particle.prototype.maybeChaseNewBoid = function(h) {
-  this.timeLeftToUpdateChaser -= h;
-  if (this.timeLeftToUpdateChaser < 0) {
-    this.isChasing = Math.floor(Math.random() * (Constants.NUM_BOIDS - Constants.NUM_LEAD_BOIDS) + Constants.NUM_LEAD_BOIDS)
-    this.timeLeftToUpdateChaser = 5;
+var State = function() {
+  this.stateValues = [];
+};
+
+State.prototype.addStateValues = function(values) {
+  Array.prototype.push.apply(this.stateValues, values);
+};
+
+State.prototype.multiplyScalar = function(scalar) {
+  for(var i = 0; i < stateValues.length; i++) {
+    stateValues[i] *= scalar;
   }
 };
+
+State.prototype.addState = function(state) {
+  for(var i = 0; i < stateValues.length; i++) {
+    stateValues[i] += state[i];
+  }
+}

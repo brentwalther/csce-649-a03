@@ -32,10 +32,10 @@ var Triangle = {
 
       var cp = new THREE.Vector3();
       cp.crossVectors(u, v);
-      if (cp.z > EPSILON) {
+      if (cp.z > -EPSILON) {
         positiveCount++;
       }
-      if (cp.z < -EPSILON) {
+      if (cp.z < EPSILON) {
         negativeCount++;
       }
     }
