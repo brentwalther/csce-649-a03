@@ -34,57 +34,64 @@ Simulation.prototype.stop = function() {
 
 Simulation.prototype.simulate = function() {
 
-  var positions = [];
-  var velocities = [];
-  var N = this.boids.length;
-
-  for (var i = 0; i < N; i++) {
-    var boid = this.boids[i];
-    positions.push(boid.p.clone());
-    velocities.push(boid.v.clone());
-  }
-
   var state = [];
-  Array.prototype.push.apply(state, positions);
-  Array.prototype.push.apply(state, velocities);
-
+  var N = this.rigidBodies.length;
 
   var h = this.clock.getDelta();
   this.updateCamera(h);
 
-  var k1 = this.computeDerivative(state);
-  var stateNew = this.integrate(state, k1, h);
-  var wasCollision = this.doCollisions(state, stateNew);
-  if (!wasCollision && this.integrationMethod !== 'euler') {
-    var k2 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k1, h / 0.5)));
-    var k3 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k2, h / 0.5)));
-    var k4 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k3, h)));
-
-    var kSum = StateUtil.add(k1, k4);
-    kSum = StateUtil.add(kSum, StateUtil.multiply(k2, 2));
-    kSum = StateUtil.add(kSum, StateUtil.multiply(k3, 2));
-    kSum = StateUtil.multiply(kSum, h / 6);
-    stateNew = StateUtil.add(state, kSum);
-    this.doCollisions(state, stateNew);
-  }
-
   for (var i = 0; i < N; i++) {
-    var boid = this.boids[i];
-    var pn = stateNew[i];
-    var vn = stateNew[i + N];
+    /*
+     * take current state S
+     * calculate derivative D
+     * calculate S' = S + .5h * D
+     * renormalize orientation
+     * calculate derivative at S' = D'
+     * calculate S'' = S + h * D'
+     * renormalize orientation
+     */
 
-    boid.p.copy(pn);
-    boid.mesh.position.copy(pn);
-    boid.v.copy(vn);
-    this.springCubeGeos[boid.g].vertices[i].copy(pn);
-    this.springCubeGeos[boid.g].verticesNeedUpdate = true;
+    var body = this.rigidBodies[i];
+    state = body.getState();
+
+    var k1 = this.computeDerivative(state);
+    var stateNew = StateUtil.add(state, StateUtil.multiply(k1, h))
+    var wasCollision = false;
+    // if (!wasCollision && this.integrationMethod !== 'euler') {
+    //   var k2 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k1, h / 0.5)));
+    //   var k3 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k2, h / 0.5)));
+    //   var k4 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k3, h)));
+
+    //   var kSum = StateUtil.add(k1, k4);
+    //   kSum = StateUtil.add(kSum, StateUtil.multiply(k2, 2));
+    //   kSum = StateUtil.add(kSum, StateUtil.multiply(k3, 2));
+    //   kSum = StateUtil.multiply(kSum, h / 6);
+    //   stateNew = StateUtil.add(state, kSum);
+    //   // this.doCollisions(state, stateNew);
+    // }
+
+    this.doCollisions(body, state, stateNew);
+    var xn = stateNew[0];
+    var rn = stateNew[1];
+    this.normalizeMatrix4(rn);
+    var pn = stateNew[2];
+    var ln = stateNew[3];
+
+    body.x.copy(xn);
+    body.mesh.position.copy(xn);
+    body.P.copy(pn);
+    body.R.copy(rn);
+    body.L.copy(ln);
+    body.mesh.rotation.setFromRotationMatrix(rn);
+  //   this.springCubeGeos[boid.g].vertices[i].copy(pn);
+  //   this.springCubeGeos[boid.g].verticesNeedUpdate = true;
   }
 };
 
 Simulation.prototype.integrate = function(state, statePrime, h) {
   var stateNew = [];
 
-  for (var i = 0; i < state.length; i++) {
+  for (var i = 0; i < 4; i++) {
     stateNew.push(state[i].clone().add(statePrime[i].clone().multiplyScalar(h)));
   }
 
@@ -92,82 +99,55 @@ Simulation.prototype.integrate = function(state, statePrime, h) {
 }
 
 Simulation.prototype.computeDerivative = function(state) {
-  var statePrime = [];
+  /*
+   * v = 1/m * p
+   * I' = R * I'0 * RT
+   * w = I' * L
+   * compute w*
+   * compute w* R
+   * get all Forces
+   * get all Torque
+   */
 
-  var N = state.length / 2;
-  for (var i = 0; i < N; i++) {
-    statePrime.push(state[i + N].clone());
-  }
-  var forces = this.getForces(state);
-  for (var i = 0; i < N; i++) {
-    statePrime.push(forces[i]);
-  }
+  var m = state[4];
+  var v = state[2].clone().multiplyScalar(1 / m);
+  var R = state[1];
+  var Iprime = R.clone().multiply(state[5]).multiply(R.clone().transpose());
+  var w = state[3].clone().applyMatrix4(Iprime);
+  var wStar = new THREE.Matrix4();
+  wStar.set(
+    0,    -w.z, w.y,  0,
+    w.z,  0,    -w.x, 0,
+    -w.y, w.x,  0,    0,
+    0,    0,    0,    1
+  );
+  wStar.multiply(R);
+
+  var statePrime = [
+    v,
+    wStar,
+    new THREE.Vector3(0, 0, -5), // forces
+    new THREE.Vector3(0, 0, 0),  // torque
+    state[4], // mass
+    state[5]  // moment of inertia inverse
+  ];
 
   return statePrime;
 };
 
-Simulation.prototype.getForces = function(state) {
-  var forces = [];
-  var N = state.length / 2;
+Simulation.prototype.doCollisions = function(body, state, stateNew) {
+  var N = body.geometry.vertices.length;
+  var numCollisions = 0;
 
-  for (var i = 0; i < N; i++) {
-    forces.push(new THREE.Vector3(0, 0, -9.8));
-  }
+  var x = state[0];
+  var R = state[1].clone();
+  var xn = stateNew[0];
+  var Rn = stateNew[1].clone();
 
-  var lo = 2;
-  var kij = 200;
-  var dij = 8;
-
-  for (var i = 0; i < G.Box.length; i++) {
-    var vs = G.Box[i];
-    var xi = state[vs[0]];
-    var xj = state[vs[1]];
-
-    var xij = xj.clone().sub(xi);
-    var lij = xij.length();
-    var uij = xij.clone().normalize();
-
-    var fis = uij.clone().multiplyScalar((lij - lo) * kij);
-    forces[vs[0]].add(fis);
-    forces[vs[1]].sub(fis);
-
-    var vi = state[vs[0] + N];
-    var vj = state[vs[1] + N];
-    var fid = uij.clone().multiplyScalar((uij.dot(vj.clone().sub(vi))) * dij);
-    forces[vs[0]].add(fid);
-    forces[vs[1]].sub(fid);
-  }
-
-  var loc = 3.464;
-  for (var i = 0; i < G.BoxCross.length && this.shouldComputeCrossSprings; i++) {
-    var vs = G.BoxCross[i];
-    var xi = state[vs[0]];
-    var xj = state[vs[1]];
-
-    var xij = xj.clone().sub(xi);
-    var lij = xij.length();
-    var uij = xij.clone().normalize();
-
-    var fis = uij.clone().multiplyScalar((lij - loc) * kij);
-    forces[vs[0]].add(fis);
-    forces[vs[1]].sub(fis);
-
-    var vi = state[vs[0] + N];
-    var vj = state[vs[1] + N];
-    var fid = uij.clone().multiplyScalar((uij.dot(vj.clone().sub(vi))) * dij);
-    forces[vs[0]].add(fid);
-    forces[vs[1]].sub(fid);
-  }
-
-  return forces;
-};
-
-Simulation.prototype.doCollisions = function(state, stateNew) {
-  var N = state.length / 2;
-  var wasCollision = false;
   for (var pi = 0; pi < N; pi++) {
-    var p = state[pi];
-    var pn = stateNew[pi];
+    var v = body.geometry.vertices[pi].clone();
+    var p = v.clone().applyMatrix4(R).add(x);
+    var pn = v.clone().applyMatrix4(Rn).add(xn);
 
     var collision = undefined;
     for (var i = 0; i < this.faces.length; i++) {
@@ -188,11 +168,15 @@ Simulation.prototype.doCollisions = function(state, stateNew) {
         var v3 = this.vertices[face.c];
 
         if (Triangle.isContained(collisionPosition, normal, v1, v2, v3)) {
+          numCollisions++;
           if (!collision || f < collision.f) {
+            var D = this.computeDerivative(state);
             collision = {
-                f: f,
-                dn1: dn1,
-                normal: normal.clone()
+                r: p.clone().sub(x),
+                qDot: D[0].add(v.clone().applyMatrix4(D[1])),
+                Iprime: state[5].clone(),
+                mass: state[4],
+                normal: normal.clone().normalize()
             };
           }
         }
@@ -200,20 +184,35 @@ Simulation.prototype.doCollisions = function(state, stateNew) {
     }
 
     if (collision) {
-      var vc = stateNew[pi + N].clone();
-      pn = collision.pn;
-      var vn = collision.normal.clone().multiplyScalar(vc.dot(collision.normal));
-      var vt = vc.sub(vn);
-      vt.sub(vt.clone().normalize().multiplyScalar(Math.min(Coefficients.FRICTION * vn.length(), vt.length())));
+      // var vc = stateNew[pi + N].clone();
+      // pn = collision.pn;
+      // var vn = collision.normal.clone().multiplyScalar(vc.dot(collision.normal));
+      // var vt = vc.sub(vn);
+      // vt.sub(vt.clone().normalize().multiplyScalar(Math.min(Coefficients.FRICTION * vn.length(), vt.length())));
 
-      vn.multiplyScalar(-Coefficients.RESTITUTION).add(vt);
+      // vn.multiplyScalar(-Coefficients.RESTITUTION).add(vt);
 
-      stateNew[pi + N].copy(vn);
-      stateNew[pi].sub(collision.normal.clone().normalize().multiplyScalar(collision.dn1 * (1 + Coefficients.RESTITUTION)));
-      wasCollision = true;
+      // stateNew[pi + N].copy(vn);
+      // stateNew[pi].sub(collision.normal.clone().normalize().multiplyScalar(collision.dn1 * (1 + Coefficients.RESTITUTION)));
+      // numCollisions = true;
+      var jn = collision.qDot.clone().dot(collision.normal) * (-1 - 0.5);
+      var jd = (1 / collision.mass) + collision.normal.clone().dot(collision.r.clone().cross(collision.normal).cross(collision.r.clone()).applyMatrix4(collision.Iprime));
+      var j = jn / jd;
+
+      var deltaP = collision.normal.clone().multiplyScalar(j);
+      var deltaL = collision.r.clone().cross(collision.normal).multiplyScalar(j);
+      stateNew[0] = state[0];
+      stateNew[1] = state[1];
+      stateNew[2] = state[2].add(deltaP);
+      stateNew[3] = state[3].add(deltaL);
+
+      if (numCollisions == 3 && stateNew[2].length() < 0.05) {
+        stateNew[2] = new THREE.Vector3();
+        stateNew[3] = new THREE.Vector3();
+      }
     }
   }
-  if (wasCollision) {
+  if (numCollisions > 0) {
     return true;
   }
 
@@ -269,44 +268,13 @@ Simulation.prototype.reset = function() {
   var wireCube = new THREE.Mesh(cubeGeometry, cubeMaterial)
   this.addCollidableMesh(wireCube);
 
-  this.springCubeGeos = [];
-  this.springCubeGeos.push(new THREE.BoxGeometry(2, 2, 2));
-  var springCubeMat = new THREE.MeshPhongMaterial({ color: 0xdddddd, specular: 0xffffff, shininess: 30, shading: THREE.SmoothShading });
-  var springCube = new THREE.Mesh(this.springCubeGeos[0], springCubeMat);
-  if (document.getElementById('randomRotation').checked) {
-    springCube.rotateX(1 - Math.random()*2);
-    springCube.rotateY(1 - Math.random()*2);
-    springCube.updateMatrix();
-    springCube.geometry.applyMatrix( springCube.matrix );
-    springCube.matrix.identity();
-    springCube.position.set( 0, 0, 0 );
-    springCube.rotation.set( 0, 0, 0 );
-    springCube.scale.set( 1, 1, 1 );
+  var rigidBodies = [];
+  rigidBodies.push(new Polyhedron());
+  for (var i = 0; i < rigidBodies.length; i++) {
+    this.scene.add(rigidBodies[i].mesh);
   }
-  this.scene.add(springCube);
 
-  // var planeGeometry = new THREE.PlaneGeometry(10, 2);
-  // var planeMaterial = new THREE.MeshBasicMaterial( {color: 0xffff00, side: THREE.DoubleSide} );
-  // var plane = new THREE.Mesh( planeGeometry, planeMaterial );
-  // plane.translateZ(-4);
-  // plane.rotateX(3.14/2);
-  // plane.updateMatrix();
-  // plane.geometry.applyMatrix( plane.matrix );
-  // plane.matrix.identity();
-  // plane.position.set( 0, 0, 0 );
-  // plane.rotation.set( 0, 0, 0 );
-  // plane.scale.set( 1, 1, 1 );
-  // this.addCollidableMesh(plane);
-
-  // Add the boids to the simulation
-  this.boids = [];
-  for (var i = 0; i < this.springCubeGeos[0].vertices.length; i++) {
-    var boid = new Particle(this.scene, 0);
-    boid.g = 0;
-    boid.p = this.springCubeGeos[0].vertices[i];
-    boid.v = new THREE.Vector3(0, 1 - Math.random() * 2, 0);
-    this.boids.push(boid);
-  }
+  this.rigidBodies = rigidBodies;
 
   // Add lights
   var light = new THREE.PointLight(0xffffff, 1, 40);
@@ -395,6 +363,19 @@ Simulation.prototype.updateCamera = function(h) {
   this.camera.lookAt(this.cameraPos.position);
 }
 
+Simulation.prototype.normalizeMatrix4 = function(matrix) {
+  for (var i = 0; i < 15; i += 4) {
+    var sum = 0;
+    for (var j = i; j < i + 4; j++) {
+      sum += matrix.elements[j] * matrix.elements[j];
+    }
+    sum = Math.sqrt(sum);
+    for (var j = i; j < i + 4; j++) {
+      matrix.elements[j] /= sum;
+    }
+  }
+};
+
 Simulation.prototype.setIntegrationMethod = function() {
   if (document.getElementById('useRK4').checked) {
     this.integrationMethod = 'rk4';
@@ -412,19 +393,78 @@ Simulation.prototype.setCrossSprings = function() {
 // STATE CLASS
 //---------------------
 
+var Polyhedron = function() {
+  var s = 2;
+  var mass = 1;
+
+  this.geometry = new THREE.BoxGeometry(s, s, s);
+  this.material = new THREE.MeshPhongMaterial({ color: 0xdddddd, specular: 0xffffff, shininess: 30, shading: THREE.SmoothShading });
+  this.mesh = new THREE.Mesh(this.geometry, this.material);
+
+  this.x = new THREE.Vector3();
+  this.R = new THREE.Matrix4();
+  this.P = new THREE.Vector3(5 - Math.random() * 10, 5 - Math.random() * 10, 5 - Math.random() * 10);
+  this.L = (
+    document.getElementById('randomRotation').checked
+    ? new THREE.Vector3(1 - Math.random() * 2, 1 - Math.random() * 2, 1 - Math.random() * 2)
+    : new THREE.Vector3()
+  );
+
+  // Construct the moment of intertia tensor matrix as a 4x4 with the bottom right element being
+  // one. We must do it this way because THREE.Matrix4().getInverse() expects a Matrix4 object.
+  var tensorScalar = (1 / 12) * mass * (s * s + s * s);
+  this.I = new THREE.Matrix4().multiplyScalar(tensorScalar);
+  this.I.elements[15] = 1;
+
+  this.mass = mass;
+  this.Iprime = new THREE.Matrix4().getInverse(this.I);
+};
+
+Polyhedron.prototype.getIprime = function() {
+  var mat = R.clone().multiply(this.Iprime).multiply(R.clone().transpose());
+  return new THREE.Matrix4().getInverse(mat);
+};
+
+Polyhedron.prototype.getState = function() {
+  return [
+    this.x.clone(),
+    this.R.clone(),
+    this.P.clone(),
+    this.L.clone(),
+    this.mass,
+    this.Iprime.clone()
+  ];
+};
+
 var StateUtil = {
   add: function(state1, state2) {
-    var state3 = []
-    for (var i = 0; i < state1.length; i++) {
-      state3.push(state1[i].clone().add(state2[i]));
+    var state3 = [ 0, 0, 0, 0 ];
+    for (var i = 0; i < 4; i++) {
+      if (i != 1) {
+        state3[i] = state1[i].clone().add(state2[i]);
+      } else {
+        var nm = new THREE.Matrix4();
+        for (var b = 0; b < state1[i].elements.length; b++) {
+          nm.elements[b] = state1[i].elements[b] + state2[i].elements[b];
+        }
+        state3[i] = nm;
+        // var q1 = state1[i];
+        // var q2 = state2[i];
+        // state3[i] = new THREE.Quaternion(q1.x + q2.x, q1.y + q2.y, q1.z + q2.z, q1.w + q2.w);
+      }
     }
     return state3;
   },
 
   multiply: function(state, scalar) {
-    var state2 = []
-    for (var i = 0; i < state.length; i++) {
-      state2.push(state[i].clone().multiplyScalar(scalar));
+    var state2 = [0, 0, 0, 0]
+    for (var i = 0; i < 4; i++) {
+      // if (i != 1) {
+        state2[i] = state[i].clone().multiplyScalar(scalar);
+      // } else {
+        // var q1 = state[i];
+        // state2[i] = new THREE.Quaternion(q1.x * scalar, q1.y * scalar, q1.z * scalar, q1.w * scalar);
+      // }
     }
     return state2;
   }
