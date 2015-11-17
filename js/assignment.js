@@ -213,7 +213,45 @@ Simulation.prototype.doCollisions = function(state, stateNew) {
       wasCollision = true;
     }
   }
-  return wasCollision;
+  if (wasCollision) {
+    return true;
+  }
+
+  // for (var i = 0; i < G.Box.length; i++) {
+  //   var vs = G.Box[i];
+  //   var xi = state[vs[0]];
+  //   var xj = state[vs[1]];
+
+  //   var e2 = xi.clone().sub(xj);
+
+  //   for (var i = 0; i < this.faces.length; i++) {
+  //     var v1 = this.vertices[face.a];
+  //     var v2 = this.vertices[face.b];
+  //     var v3 = this.vertices[face.c];
+  //     var edges = [];
+  //     edges.push(v1.clone().sub(v2));
+  //     edges.push(v2.clone().sub(v3));
+  //     edges.push(v3.clone().sub(v1));
+  //     edges.push(v1);
+  //     edges.push(v2);
+  //     edges.push(v3);
+
+  //     for (var ee = 0; ee < 3; ee++) {
+  //       var e1 = edges[ee];
+  //       var q = xi.clone().sub(edges[ee+3]);
+  //       var n = e2.clone().cross(e1).normalize();
+
+  //       var s = q.dot(e2.clone().normalize().cross(n)) / e1.dot(e2.clone().normalize().cross(n));
+  //       var t = - q.dot(e1.clone().normalize().cross(n)) / e2.dot(e1.clone().normalize().cross(n));
+
+  //       var dn = xi.clone().sub(edges[ee+3]).dot(n);
+  //       var dn1 = stateNew[vs[0]].clone().sub(edges[ee+3]).dot(n);
+  //       if (s < 0 && t < 0 && ((dn < 0) != (dn1 < 0))) {
+  //         var a = 1;
+  //       }
+  //     }
+  //   }
+  // }
 }
 
 Simulation.prototype.reset = function() {
@@ -246,6 +284,19 @@ Simulation.prototype.reset = function() {
     springCube.scale.set( 1, 1, 1 );
   }
   this.scene.add(springCube);
+
+  // var planeGeometry = new THREE.PlaneGeometry(10, 2);
+  // var planeMaterial = new THREE.MeshBasicMaterial( {color: 0xffff00, side: THREE.DoubleSide} );
+  // var plane = new THREE.Mesh( planeGeometry, planeMaterial );
+  // plane.translateZ(-4);
+  // plane.rotateX(3.14/2);
+  // plane.updateMatrix();
+  // plane.geometry.applyMatrix( plane.matrix );
+  // plane.matrix.identity();
+  // plane.position.set( 0, 0, 0 );
+  // plane.rotation.set( 0, 0, 0 );
+  // plane.scale.set( 1, 1, 1 );
+  // this.addCollidableMesh(plane);
 
   // Add the boids to the simulation
   this.boids = [];
