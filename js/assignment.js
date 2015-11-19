@@ -55,20 +55,8 @@ Simulation.prototype.simulate = function() {
     state = body.getState();
 
     var k1 = this.computeDerivative(state);
-    var stateNew = StateUtil.add(state, StateUtil.multiply(k1, h))
-    var wasCollision = false;
-    // if (!wasCollision && this.integrationMethod !== 'euler') {
-    //   var k2 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k1, h / 0.5)));
-    //   var k3 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k2, h / 0.5)));
-    //   var k4 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k3, h)));
-
-    //   var kSum = StateUtil.add(k1, k4);
-    //   kSum = StateUtil.add(kSum, StateUtil.multiply(k2, 2));
-    //   kSum = StateUtil.add(kSum, StateUtil.multiply(k3, 2));
-    //   kSum = StateUtil.multiply(kSum, h / 6);
-    //   stateNew = StateUtil.add(state, kSum);
-    //   // this.doCollisions(state, stateNew);
-    // }
+    var k2 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k1, h * 0.5)));
+    var stateNew = StateUtil.add(state, StateUtil.multiply(( this.useRK2 ? k2 : k1), h));
 
     this.doCollisions(body, state, stateNew);
     var xn = stateNew[0];
@@ -206,10 +194,10 @@ Simulation.prototype.doCollisions = function(body, state, stateNew) {
       stateNew[2] = state[2].add(deltaP);
       stateNew[3] = state[3].add(deltaL);
 
-      if (numCollisions == 3 && stateNew[2].length() < 0.05) {
-        stateNew[2] = new THREE.Vector3();
-        stateNew[3] = new THREE.Vector3();
-      }
+      // if (numCollisions == 3 && stateNew[2].length() < 0.05) {
+      //   stateNew[2] = new THREE.Vector3();
+      //   stateNew[3] = new THREE.Vector3();
+      // }
     }
   }
   if (numCollisions > 0) {
@@ -377,11 +365,7 @@ Simulation.prototype.normalizeMatrix4 = function(matrix) {
 };
 
 Simulation.prototype.setIntegrationMethod = function() {
-  if (document.getElementById('useRK4').checked) {
-    this.integrationMethod = 'rk4';
-  } else {
-    this.integrationMethod = 'euler';
-  }
+  this.useRK2 = document.getElementById('useRK2').checked;
 }
 
 Simulation.prototype.setCrossSprings = function() {
@@ -453,6 +437,8 @@ var StateUtil = {
         // state3[i] = new THREE.Quaternion(q1.x + q2.x, q1.y + q2.y, q1.z + q2.z, q1.w + q2.w);
       }
     }
+    state3.push(state1[4]);
+    state3.push(state1[5]);
     return state3;
   },
 
@@ -466,6 +452,8 @@ var StateUtil = {
         // state2[i] = new THREE.Quaternion(q1.x * scalar, q1.y * scalar, q1.z * scalar, q1.w * scalar);
       // }
     }
+    state2.push(state[4]);
+    state2.push(state[5]);
     return state2;
   }
 };
