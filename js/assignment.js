@@ -71,8 +71,6 @@ Simulation.prototype.simulate = function() {
     body.R.copy(rn);
     body.L.copy(ln);
     body.mesh.rotation.setFromRotationMatrix(rn);
-  //   this.springCubeGeos[boid.g].vertices[i].copy(pn);
-  //   this.springCubeGeos[boid.g].verticesNeedUpdate = true;
   }
 };
 
@@ -172,17 +170,6 @@ Simulation.prototype.doCollisions = function(body, state, stateNew) {
     }
 
     if (collision) {
-      // var vc = stateNew[pi + N].clone();
-      // pn = collision.pn;
-      // var vn = collision.normal.clone().multiplyScalar(vc.dot(collision.normal));
-      // var vt = vc.sub(vn);
-      // vt.sub(vt.clone().normalize().multiplyScalar(Math.min(Coefficients.FRICTION * vn.length(), vt.length())));
-
-      // vn.multiplyScalar(-Coefficients.RESTITUTION).add(vt);
-
-      // stateNew[pi + N].copy(vn);
-      // stateNew[pi].sub(collision.normal.clone().normalize().multiplyScalar(collision.dn1 * (1 + Coefficients.RESTITUTION)));
-      // numCollisions = true;
       var jn = collision.qDot.clone().dot(collision.normal) * (-1 - 0.5);
       var jd = (1 / collision.mass) + collision.normal.clone().dot(collision.r.clone().cross(collision.normal).cross(collision.r.clone()).applyMatrix4(collision.Iprime));
       var j = jn / jd;
@@ -193,11 +180,6 @@ Simulation.prototype.doCollisions = function(body, state, stateNew) {
       stateNew[1] = state[1];
       stateNew[2] = state[2].add(deltaP);
       stateNew[3] = state[3].add(deltaL);
-
-      // if (numCollisions == 3 && stateNew[2].length() < 0.05) {
-      //   stateNew[2] = new THREE.Vector3();
-      //   stateNew[3] = new THREE.Vector3();
-      // }
     }
   }
   if (numCollisions > 0) {
