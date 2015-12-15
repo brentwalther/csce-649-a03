@@ -39,15 +39,6 @@ Simulation.prototype.simulate = function() {
   this.updateCamera(h);
 
   for (var i = 0; i < N; i++) {
-    /*
-     * take current state S
-     * calculate derivative D
-     * calculate S' = S + .5h * D
-     * renormalize orientation
-     * calculate derivative at S' = D'
-     * calculate S'' = S + h * D'
-     * renormalize orientation
-     */
 
     var cloth = this.cloths[i];
     var state = cloth.getState();
@@ -65,18 +56,7 @@ Simulation.prototype.simulate = function() {
     // var stateNew = StateUtil.add(state, StateUtil.multiply(( this.useRK2 ? k2 : k1), h));
 
     this.doCollisions(cloth, state, stateNew);
-    // var xn = stateNew[0];
-    // var rn = stateNew[1];
-    // this.normalizeMatrix4(rn);
-    // var pn = stateNew[2];
-    // var ln = stateNew[3];
 
-    // cloth.x.copy(xn);
-    // cloth.mesh.position.copy(xn);
-    // cloth.P.copy(pn);
-    // cloth.R.copy(rn);
-    // cloth.L.copy(ln);
-    // cloth.mesh.rotation.setFromRotationMatrix(rn);
     for (var p = 0; p < stateNew.length; p++) {
       if (p == 0 || p == 1 || p == 2 || p == 27 || p == 28 || p == 29) { continue; }
       var updates = stateNew[p];
@@ -98,15 +78,6 @@ Simulation.prototype.integrate = function(state, statePrime, h) {
 }
 
 Simulation.prototype.computeDerivative = function(state) {
-  /*
-   * v = 1/m * p
-   * I' = R * I'0 * RT
-   * w = I' * L
-   * compute w*
-   * compute w* R
-   * get all Forces
-   * get all Torque
-   */
 
   var derivative = [];
   var N = state.length;
@@ -128,14 +99,10 @@ Simulation.prototype.computeDerivative = function(state) {
   var dij = 10;
   var structuralNeighbors = [
     [1,  0],
-    // [-1, 0],
     [0,  1],
-    // [0, -1]
   ];
 
   var shearNeighbors = [
-    // [-1, -1],
-    // [-1,  1],
     [1,  -1],
     [1,   1]
   ];
@@ -162,10 +129,6 @@ Simulation.prototype.computeDerivative = function(state) {
         }
 
         var idxer = state[idx];
-        if (!idxer) {
-          console.log('help!');
-          continue;
-        }
         var xn = idxer[0];
 
         // compute the springy forces
@@ -196,12 +159,7 @@ Simulation.prototype.computeDerivative = function(state) {
 
       if (pi >= 0 && pi < 30 && pj >= 0 && pj < 30) {
         var idx = pj * 30 + pi;
-        // if (idx < 0 || idx >= state.length) { console.log("E11"); }
         var idxer = state[idx];
-        if (!idxer) {
-          console.log('help!');
-          continue;
-        }
         var xn = idxer[0];
 
         // compute the springy forces
@@ -336,9 +294,6 @@ Simulation.prototype.reset = function() {
 
   var cloths = [];
   cloths.push(new Cloth(this.scene));
-  for (var i = 0; i < cloths.length; i++) {
-    // this.scene.add(cloths[i].mesh);
-  }
 
   this.cloths = cloths;
   this.broken = [];
@@ -456,8 +411,8 @@ var Cloth = function(scene) {
 
   var rotationMatrix = new THREE.Matrix4();
   rotationMatrix.makeRotationX(Math.PI / 2);
-  // this.geometry = new THREE.PlaneGeometry(this.s, this.s, this.n, this.n);
-  // this.geometry.applyMatrix(rotationMatrix);
+
+  // Create all the meshes for the cloth pieces
   var meshes = [];
   for (var y = 0; y < this.n; y++) {
     meshes[y] = [];
@@ -487,14 +442,6 @@ var Cloth = function(scene) {
       }
     }
   }
-  // this.geometry = new THREE.Geometry();
-  // this.geometry.vertices.push(
-  //   new THREE.Vector3(0, 5, 5),
-  //   new THREE.Vector3(0, -5, 5));
-  // this.material = new THREE.LineBasicMaterial({ color: 0xff0000 });
-  // this.mesh = new THREE.Line(this.geometry, this.material);
-  // this.mesh.rotateOnAxis(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
-  // this.mesh.translateZ(-s / 2);
 
   this.xs = [];
   this.vs = [];
@@ -544,9 +491,6 @@ Cloth.prototype.updateMeshes = function() {
       }
     }
   }
-
-  // cloth.geometry.vertices[p].copy(updates[0]);
-  // cloth.geometry.verticesNeedUpdate = true;
 }
 
 Cloth.prototype.getState = function() {
