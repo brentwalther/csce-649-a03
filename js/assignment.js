@@ -78,13 +78,12 @@ Simulation.prototype.simulate = function() {
     // cloth.L.copy(ln);
     // cloth.mesh.rotation.setFromRotationMatrix(rn);
     for (var p = 0; p < stateNew.length; p++) {
-      if (p > -1 && p < 2 || p > 28 && p < 31) { continue; }
+      if (p == 0 || p == 1 || p == 2 || p == 27 || p == 28 || p == 29) { continue; }
       var updates = stateNew[p];
       cloth.xs[p].copy(updates[0]);
       cloth.vs[p].copy(updates[1]);
-      cloth.geometry.vertices[p].copy(updates[0]);
     }
-    cloth.geometry.verticesNeedUpdate = true;
+    cloth.updateMeshes();
   }
 };
 
@@ -125,36 +124,38 @@ Simulation.prototype.computeDerivative = function(state) {
 
   var structLen = .3333333;
   var shearLen = Math.sqrt(structLen * structLen * 2);
-  var kij = 500;
-  var dij = 3;
+  var kij = 1000;
+  var dij = 10;
   var structuralNeighbors = [
     [1,  0],
-    [-1, 0],
+    // [-1, 0],
     [0,  1],
-    [0, -1]
+    // [0, -1]
   ];
 
   var shearNeighbors = [
-    [-1, -1],
-    [-1,  1],
+    // [-1, -1],
+    // [-1,  1],
     [1,  -1],
     [1,   1]
   ];
 
+  // return derivative;
+
   for (var i = 0; i < N; i++) {
     var x = state[i][0];
-    var xi = i % 31;
-    var xj = Math.floor(i / 31);
+    var xi = i % 30;
+    var xj = Math.floor(i / 30);
 
     // sum forces from all the neighbors
-    for (var n = 0; n < 4; n++) {
+    for (var n = 0; n < 2; n++) {
       var neighbor = structuralNeighbors[n];
       var pi = xi + neighbor[0];
       var pj = xj + neighbor[1];
 
-      if (pi >= 0 && pi < 31 && pj >= 0 && pj < 31) {
-        var idx = pj * 31 + pi;
-        // if (idx < i) { continue; }
+      if (pi >= 0 && pi < 30 && pj >= 0 && pj < 30) {
+        var idx = pj * 30 + pi;
+        if (idx < i) { continue; }
 
         if (this.broken[i] && this.broken[i][idx]) {
           continue;
@@ -163,6 +164,7 @@ Simulation.prototype.computeDerivative = function(state) {
         var idxer = state[idx];
         if (!idxer) {
           console.log('help!');
+          continue;
         }
         var xn = idxer[0];
 
@@ -170,8 +172,8 @@ Simulation.prototype.computeDerivative = function(state) {
         var xij = xn.clone().sub(x);
         var lij = xij.length();
         if (lij > 2) {
-          console.log("Breaking link between node %d and %d are at length %f", i, idx, lij);
-          this.breakLink(i, idx);
+          // console.log("Breaking link between node %d and %d are at length %f", i, idx, lij);
+          // this.breakLink(i, idx);
         }
         var uij = xij.clone().normalize();
 
@@ -187,17 +189,18 @@ Simulation.prototype.computeDerivative = function(state) {
       }
     }
 
-    for (var n = 0; n < 4; n++) {
+    for (var n = 0; n < 2; n++) {
       var neighbor = shearNeighbors[n];
       var pi = xi + neighbor[0];
       var pj = xj + neighbor[1];
 
-      if (pi >= 0 && pi < 31 && pj >= 0 && pj < 31) {
-        var idx = pj * 31 + pi;
-        if (idx < 0 || idx >= state.length) { console.log("E11"); }
+      if (pi >= 0 && pi < 30 && pj >= 0 && pj < 30) {
+        var idx = pj * 30 + pi;
+        // if (idx < 0 || idx >= state.length) { console.log("E11"); }
         var idxer = state[idx];
         if (!idxer) {
           console.log('help!');
+          continue;
         }
         var xn = idxer[0];
 
@@ -440,15 +443,6 @@ Simulation.prototype.updateCamera = function(h) {
   }
 }
 
-Simulation.prototype.setIntegrationMethod = function() {
-  this.useRK2 = document.getElementById('useRK2').checked;
-}
-
-Simulation.prototype.setCrossSprings = function() {
-  this.shouldComputeCrossSprings = document.getElementById('useCrossSprings').checked;
-}
-
-
 //---------------------
 // STATE CLASS
 //---------------------
@@ -465,14 +459,14 @@ var Cloth = function(scene) {
   // this.geometry = new THREE.PlaneGeometry(this.s, this.s, this.n, this.n);
   // this.geometry.applyMatrix(rotationMatrix);
   var meshes = [];
-  for (var x = 0; x < this.n; x++) {
-    meshes[x] = [];
-    for (var y = 0; y < this.n; y++) {
-      meshes[x][y] = [];
+  for (var y = 0; y < this.n; y++) {
+    meshes[y] = [];
+    for (var x = 0; x < this.n; x++) {
+      meshes[y][x] = [];
 
-      var topLeft = new THREE.Vector3(0, 5 - (x * step), 5 - (y * step));
-      var right = new THREE.Vector3(0, 5 - ((x + 1) * step), 5 - (y * step));
-      var bottom = new THREE.Vector3(0, 5 - (x * step), 5 - ((y + 1) * step));
+      var topLeft = new THREE.Vector3(5 - (x * step), 0, 5 - (y * step));
+      var right = new THREE.Vector3(5 - ((x + 1) * step), 0,  5 - (y * step));
+      var bottom = new THREE.Vector3(5 - (x * step), 0, 5 - ((y + 1) * step));
 
       var mat = new THREE.LineBasicMaterial({ color: 0xff0000 });
       var hg = new THREE.Geometry();
@@ -485,11 +479,11 @@ var Cloth = function(scene) {
 
       if ((x + 1) != this.n) {
         scene.add(horMesh);
-        meshes[x][y].push(horMesh);
+        meshes[y][x].push(horMesh);
       }
       if ((y + 1) != this.n) {
         scene.add(verMesh);
-        meshes[x][y].push(verMesh);
+        meshes[y][x].push(verMesh);
       }
     }
   }
@@ -518,6 +512,43 @@ var Cloth = function(scene) {
   this.mass = mass;
 };
 
+Cloth.prototype.updateMeshes = function() {
+  for (var i = 0; i < this.xs.length; i++) {
+    var pos = this.xs[i];
+
+    var x = i % 30;
+    var y = Math.floor(i / 30);
+
+    var mesh = this.meshes[y][x][0];
+    if (mesh) {
+      mesh.geometry.vertices[0].copy(pos);
+      mesh.geometry.verticesNeedUpdate = true;
+    }
+    mesh = this.meshes[y][x][1];
+    if (mesh) {
+      mesh.geometry.vertices[0].copy(pos);
+      mesh.geometry.verticesNeedUpdate = true;
+    }
+    if (y > 0) {
+      mesh = this.meshes[y-1][x][ (x == 29 ? 0 : 1) ];
+      if (mesh) {
+        mesh.geometry.vertices[1].copy(pos);
+        mesh.geometry.verticesNeedUpdate = true;
+      }
+    }
+    if (x > 0) {
+      mesh = this.meshes[y][x-1][0];
+      if (mesh) {
+        mesh.geometry.vertices[1].copy(pos);
+        mesh.geometry.verticesNeedUpdate = true;
+      }
+    }
+  }
+
+  // cloth.geometry.vertices[p].copy(updates[0]);
+  // cloth.geometry.verticesNeedUpdate = true;
+}
+
 Cloth.prototype.getState = function() {
   var state = [];
   for (var i = 0; i < this.xs.length; i++) {
@@ -530,25 +561,19 @@ var StateUtil = {
   add: function(state1, state2) {
     var newState = [];
     for (var i = 0; i < state1.length; i++) {
-      newState.push(state1[i].map(function (e, j) { return e.clone().add(state2[i][j]); }));
+      newState.push([
+        state1[i][0].clone().add(state2[i][0]),
+        state1[i][1].clone().add(state2[i][1])
+      ]);
     }
-    // newState.push(state1[4]);
-    // newState.push(state1[5]);
     return newState;
   },
 
   multiply: function(state, scalar) {
     var newState = [];
     for (var i = 0; i < state.length; i++) {
-      // if (i != 1) {
-        newState.push(state[i].map(function (e) { return e.clone().multiplyScalar(scalar); }));
-      // } else {
-        // var q1 = state[i];
-        // newState[i] = new THREE.Quaternion(q1.x * scalar, q1.y * scalar, q1.z * scalar, q1.w * scalar);
-      // }
+      newState.push([state[i][0].clone().multiplyScalar(scalar), state[i][1].clone().multiplyScalar(scalar)]);
     }
-    // newState.push(state[4]);
-    // newState.push(state[5]);
     return newState;
   }
 };
