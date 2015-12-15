@@ -171,14 +171,7 @@ Simulation.prototype.computeDerivative = function(state) {
         var lij = xij.length();
         if (lij > 2) {
           console.log("Breaking link between node %d and %d are at length %f", i, idx, lij);
-
-          if (!this.broken[i]) { this.broken[i] = []; }
-          this.broken[i][idx] = true;
-
-          if (!this.broken[idx]) { this.broken[idx] = []; }
-          this.broken[idx][i] = true;
-
-
+          this.breakLink(i, idx);
         }
         var uij = xij.clone().normalize();
 
@@ -225,28 +218,6 @@ Simulation.prototype.computeDerivative = function(state) {
       }
     }
   }
-
-  // var loc = 3.464;
-  // for (var i = 0; i < G.BoxCross.length && this.shouldComputeCrossSprings; i++) {
-  //   var vs = G.BoxCross[i];
-  //   var xi = state[vs[0]];
-  //   var xj = state[vs[1]];
-
-  //   var xij = xj.clone().sub(xi);
-  //   var lij = xij.length();
-  //   var uij = xij.clone().normalize();
-
-  //   var fis = uij.clone().multiplyScalar((lij - loc) * kij);
-  //   derivative[vs[0]].add(fis);
-  //   derivative[vs[1]].sub(fis);
-
-  //   var vi = state[vs[0] + N];
-  //   var vj = state[vs[1] + N];
-  //   var fid = uij.clone().multiplyScalar((uij.dot(vj.clone().sub(vi))) * dij);
-  //   derivative[vs[0]].add(fid);
-  //   derivative[vs[1]].sub(fid);
-  // }
-
   return derivative;
 };
 
@@ -315,42 +286,34 @@ Simulation.prototype.doCollisions = function(body, state, stateNew) {
   if (numCollisions > 0) {
     return true;
   }
+}
 
-  // for (var i = 0; i < G.Box.length; i++) {
-  //   var vs = G.Box[i];
-  //   var xi = state[vs[0]];
-  //   var xj = state[vs[1]];
+Simulation.prototype.breakLink = function(v1, v2) {
+  var cloth = this.cloths[0];
 
-  //   var e2 = xi.clone().sub(xj);
+  var newFaces = [];
+  var now = performance.now();
+  for (var f = 0; f < cloth.geometry.faces.length; f++) {
+    var face = cloth.geometry.faces[f].clone();
+    // find face and update vertex
+    var hasV1 = (v1 == face.a || v1 == face.b || v1 == face.c);
+    var hasV2 = (v2 == face.a || v2 == face.b || v2 == face.c);
 
-  //   for (var i = 0; i < this.faces.length; i++) {
-  //     var v1 = this.vertices[face.a];
-  //     var v2 = this.vertices[face.b];
-  //     var v3 = this.vertices[face.c];
-  //     var edges = [];
-  //     edges.push(v1.clone().sub(v2));
-  //     edges.push(v2.clone().sub(v3));
-  //     edges.push(v3.clone().sub(v1));
-  //     edges.push(v1);
-  //     edges.push(v2);
-  //     edges.push(v3);
+    if (/*!*/(hasV1 && hasV2)) {
+      console.log("Need to delete face: ");
+      console.log(face);
+      // newFaces.push(face);
+    }
+  }
+  console.log("Took %f msecs to scan faces.", performance.now() - now);
+  // cloth.geometry.faces = newFaces;
+  // cloth.geometry.elementsNeedUpdate = true;
 
-  //     for (var ee = 0; ee < 3; ee++) {
-  //       var e1 = edges[ee];
-  //       var q = xi.clone().sub(edges[ee+3]);
-  //       var n = e2.clone().cross(e1).normalize();
+  if (!this.broken[v1]) { this.broken[v1] = []; }
+  this.broken[v1][v2] = true;
 
-  //       var s = q.dot(e2.clone().normalize().cross(n)) / e1.dot(e2.clone().normalize().cross(n));
-  //       var t = - q.dot(e1.clone().normalize().cross(n)) / e2.dot(e1.clone().normalize().cross(n));
-
-  //       var dn = xi.clone().sub(edges[ee+3]).dot(n);
-  //       var dn1 = stateNew[vs[0]].clone().sub(edges[ee+3]).dot(n);
-  //       if (s < 0 && t < 0 && ((dn < 0) != (dn1 < 0))) {
-  //         var a = 1;
-  //       }
-  //     }
-  //   }
-  // }
+  if (!this.broken[v2]) { this.broken[v2] = []; }
+  this.broken[v2][v1] = true;
 }
 
 Simulation.prototype.reset = function() {
@@ -369,9 +332,9 @@ Simulation.prototype.reset = function() {
   // this.addCollidableMesh(wireCube);
 
   var cloths = [];
-  cloths.push(new Cloth());
+  cloths.push(new Cloth(this.scene));
   for (var i = 0; i < cloths.length; i++) {
-    this.scene.add(cloths[i].mesh);
+    // this.scene.add(cloths[i].mesh);
   }
 
   this.cloths = cloths;
@@ -490,45 +453,69 @@ Simulation.prototype.setCrossSprings = function() {
 // STATE CLASS
 //---------------------
 
-var Cloth = function(i, j) {
+var Cloth = function(scene) {
   this.s = 10;
   this.n = 30;
   var mass = 1;
 
+  var step = this.s / this.n;
+
   var rotationMatrix = new THREE.Matrix4();
   rotationMatrix.makeRotationX(Math.PI / 2);
-  this.geometry = new THREE.PlaneGeometry(this.s, this.s, this.n, this.n);
-  this.geometry.applyMatrix(rotationMatrix);
-  this.material = new THREE.MeshBasicMaterial({ color: 0xdddddd, wireframe: true, side: THREE.DoubleSide });
-  this.mesh = new THREE.Mesh(this.geometry, this.material);
+  // this.geometry = new THREE.PlaneGeometry(this.s, this.s, this.n, this.n);
+  // this.geometry.applyMatrix(rotationMatrix);
+  var meshes = [];
+  for (var x = 0; x < this.n; x++) {
+    meshes[x] = [];
+    for (var y = 0; y < this.n; y++) {
+      meshes[x][y] = [];
+
+      var topLeft = new THREE.Vector3(0, 5 - (x * step), 5 - (y * step));
+      var right = new THREE.Vector3(0, 5 - ((x + 1) * step), 5 - (y * step));
+      var bottom = new THREE.Vector3(0, 5 - (x * step), 5 - ((y + 1) * step));
+
+      var mat = new THREE.LineBasicMaterial({ color: 0xff0000 });
+      var hg = new THREE.Geometry();
+      hg.vertices.push(topLeft, right);
+      var vg = new THREE.Geometry();
+      vg.vertices.push(topLeft, bottom);
+
+      var horMesh = new THREE.Line(hg, mat);
+      var verMesh = new THREE.Line(vg, mat);
+
+      if ((x + 1) != this.n) {
+        scene.add(horMesh);
+        meshes[x][y].push(horMesh);
+      }
+      if ((y + 1) != this.n) {
+        scene.add(verMesh);
+        meshes[x][y].push(verMesh);
+      }
+    }
+  }
+  // this.geometry = new THREE.Geometry();
+  // this.geometry.vertices.push(
+  //   new THREE.Vector3(0, 5, 5),
+  //   new THREE.Vector3(0, -5, 5));
+  // this.material = new THREE.LineBasicMaterial({ color: 0xff0000 });
+  // this.mesh = new THREE.Line(this.geometry, this.material);
   // this.mesh.rotateOnAxis(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
   // this.mesh.translateZ(-s / 2);
 
   this.xs = [];
   this.vs = [];
-  for (var i = 0; i < this.geometry.vertices.length; i++) {
-    this.xs.push(this.geometry.vertices[i]);
-    this.vs.push(new THREE.Vector3());
+  for (var i = 0; i < meshes.length; i++) {
+    for (var j = 0; j < meshes[i].length; j++) {
+      var mesh = meshes[i][j][0];
+      // x will be undefined on the bottom corner
+      var x = (mesh === undefined ? meshes[i][j-1][0].geometry.vertices[1] : meshes[i][j][0].geometry.vertices[0]);
+      this.xs.push(x);
+      this.vs.push(new THREE.Vector3());
+    }
   }
-  this.x = new THREE.Vector3();
-  // this.R = new THREE.Matrix4();
-  this.v = new THREE.Vector3();//new THREE.Vector3(5 - Math.random() * 10, 5 - Math.random() * 10, 5 - Math.random() * 10);
-  // this.L = (
-    // document.getElementById('randomRotation').checked
-    // ? new THREE.Vector3(1 - Math.random() * 2, 1 - Math.random() * 2, 1 - Math.random() * 2)
-    // : new THREE.Vector3()
-  // );
-  this.i = i;
-  this.j = j;
 
-  // Construct the moment of intertia tensor matrix as a 4x4 with the bottom right element being
-  // one. We must do it this way because THREE.Matrix4().getInverse() expects a Matrix4 object.
-  // var tensorScalar = (1 / 12) * mass * (s * s + s * s);
-  // this.I = new THREE.Matrix4().multiplyScalar(tensorScalar);
-  // this.I.elements[15] = 1;
-
+  this.meshes = meshes;
   this.mass = mass;
-  // this.Iprime = new THREE.Matrix4().getInverse(this.I);
 };
 
 Cloth.prototype.getState = function() {
