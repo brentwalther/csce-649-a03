@@ -122,9 +122,9 @@ Simulation.prototype.computeDerivative = function(state) {
 
       if (pi >= 0 && pi < 30 && pj >= 0 && pj < 30) {
         var idx = pj * 30 + pi;
-        if (idx < i) { continue; }
 
-        if (this.broken[i] && this.broken[i][idx]) {
+        if (idx < i) { continue; }
+        if (this.broken[i] && this.broken[i][idx] || this.broken[idx] && this.broken[idx][i]) {
           continue;
         }
 
@@ -135,8 +135,8 @@ Simulation.prototype.computeDerivative = function(state) {
         var xij = xn.clone().sub(x);
         var lij = xij.length();
         if (lij > 2) {
-          // console.log("Breaking link between node %d and %d are at length %f", i, idx, lij);
-          // this.breakLink(i, idx);
+          console.log("Breaking link between node %d and %d are at length %f", i, idx, lij);
+          this.breakLink(i, idx);
         }
         var uij = xij.clone().normalize();
 
@@ -159,6 +159,11 @@ Simulation.prototype.computeDerivative = function(state) {
 
       if (pi >= 0 && pi < 30 && pj >= 0 && pj < 30) {
         var idx = pj * 30 + pi;
+
+        if (this.broken[i] && this.broken[i][idx] || this.broken[idx] && this.broken[idx][i]) {
+          continue;
+        }
+
         var idxer = state[idx];
         var xn = idxer[0];
 
@@ -252,19 +257,38 @@ Simulation.prototype.doCollisions = function(body, state, stateNew) {
 Simulation.prototype.breakLink = function(v1, v2) {
   var cloth = this.cloths[0];
 
-  var newFaces = [];
   var now = performance.now();
-  for (var f = 0; f < cloth.geometry.faces.length; f++) {
-    var face = cloth.geometry.faces[f].clone();
-    // find face and update vertex
-    var hasV1 = (v1 == face.a || v1 == face.b || v1 == face.c);
-    var hasV2 = (v2 == face.a || v2 == face.b || v2 == face.c);
+  // for (var f = 0; f < cloth.geometry.faces.length; f++) {
+  //   var face = cloth.geometry.faces[f].clone();
+  //   // find face and update vertex
+  //   var hasV1 = (v1 == face.a || v1 == face.b || v1 == face.c);
+  //   var hasV2 = (v2 == face.a || v2 == face.b || v2 == face.c);
 
-    if (/*!*/(hasV1 && hasV2)) {
-      console.log("Need to delete face: ");
-      console.log(face);
-      // newFaces.push(face);
+  //   if (/*!*/(hasV1 && hasV2)) {
+  //     console.log("Need to delete face: ");
+  //     console.log(face);
+  //     // newFaces.push(face);
+  //   }
+  // }
+  var x1 = v1 % 30;
+  var y1 = Math.floor(v1 / 30);
+  var x2 = v2 % 30;
+  var y2 = Math.floor(v2 / 30);
+
+  if (x1 == x2) {
+    var y = Math.min(y1, y2);
+    cloth.meshes[y][x1][0].visible = false;
+    if (y != 29 && x != 29) {
+      cloth.meshes[y][x1][1].visible = false;
     }
+  } else if (y1 == y2) {
+    var x = Math.min(x1, x2);
+    cloth.meshes[y1][x][0].visible = false;
+    if (y != 29 && x != 29) {
+      cloth.meshes[y1][x][1].visible = false;
+    }
+  } else {
+    alert('idk');
   }
   console.log("Took %f msecs to scan faces.", performance.now() - now);
   // cloth.geometry.faces = newFaces;
