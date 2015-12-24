@@ -56,8 +56,8 @@ Simulation.prototype.simulate = function() {
   var stateNew = this.integrate(state, k1, h);
   var wasCollision = this.doCollisions(state, stateNew);
   if (!wasCollision && this.integrationMethod !== 'euler') {
-    var k2 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k1, h / 0.5)));
-    var k3 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k2, h / 0.5)));
+    var k2 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k1, h * 0.5)));
+    var k3 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k2, h * 0.5)));
     var k4 = this.computeDerivative(StateUtil.add(state, StateUtil.multiply(k3, h)));
 
     var kSum = StateUtil.add(k1, k4);
